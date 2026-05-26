@@ -1,0 +1,12 @@
+{
+    "Author": "Fj233",
+    "Name": "Friend Note",
+    "Punchline": "A simple plugin to add notes to your friends.",
+    "Description": "Add personal notes to friends from the friend list context menu. Right-click a friend's name to set a note, which will then be shown in the friend list.",
+    "Tags": [
+        "friend",
+        "notes",
+        "utility",
+        "social"
+    ]
+}
