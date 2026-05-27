@@ -16,26 +16,43 @@ public sealed unsafe class NoteService : IDisposable
     public const int NoteMaxLength = 60;
 
     private readonly IAddonLifecycle addonLifecycle;
+    private readonly IClientState clientState;
     private readonly Configuration config;
     private readonly NoteWindow noteWindow;
+    private readonly Func<uint, string> worldNameResolver;
     private readonly HashSet<ulong> lastAppliedNoteContentIds = new();
+    private bool pendingInitialFriendInfoRefresh = true;
 
-    public NoteService(IAddonLifecycle addonLifecycle, Configuration config, NoteWindow noteWindow)
+    public NoteService(
+        IAddonLifecycle addonLifecycle,
+        IClientState clientState,
+        Configuration config,
+        NoteWindow noteWindow,
+        Func<uint, string> worldNameResolver)
     {
         this.addonLifecycle = addonLifecycle;
+        this.clientState = clientState;
         this.config = config;
         this.noteWindow = noteWindow;
+        this.worldNameResolver = worldNameResolver;
 
         this.addonLifecycle.RegisterListener(
             AddonEvent.PreRequestedUpdate,
             "FriendList",
             this.OnFriendListUpdate
         );
+        this.clientState.Login += this.OnLogin;
     }
 
     public void Dispose()
     {
         this.addonLifecycle.UnregisterListener(this.OnFriendListUpdate);
+        this.clientState.Login -= this.OnLogin;
+    }
+
+    private void OnLogin()
+    {
+        pendingInitialFriendInfoRefresh = true;
     }
 
     private void OnFriendListUpdate(AddonEvent type, AddonArgs args)
@@ -66,6 +83,8 @@ public sealed unsafe class NoteService : IDisposable
         var proxy = InfoProxyFriendList.Instance();
         if (proxy == null)
             return;
+
+        RefreshInitialFriendInfo(proxy);
 
         var friendDisplays = GetFriendDisplays(proxy);
         if (friendDisplays.Count == 0)
@@ -101,6 +120,64 @@ public sealed unsafe class NoteService : IDisposable
             if (!string.IsNullOrEmpty(friendDisplay.Note))
                 lastAppliedNoteContentIds.Add(friendDisplay.ContentId);
         }
+    }
+
+    private void RefreshInitialFriendInfo(InfoProxyFriendList* proxy)
+    {
+        if (!pendingInitialFriendInfoRefresh)
+            return;
+
+        if (proxy->EntryCount == 0)
+            return;
+
+        pendingInitialFriendInfoRefresh = false;
+
+        if (config.FriendNoteList.Count == 0)
+            return;
+
+        var notesByContentId = new Dictionary<ulong, List<NoteList>>();
+        foreach (var friendNote in config.FriendNoteList)
+        {
+            if (!notesByContentId.TryGetValue(friendNote.ContentId, out var notes))
+            {
+                notes = new List<NoteList>();
+                notesByContentId.Add(friendNote.ContentId, notes);
+            }
+
+            notes.Add(friendNote);
+        }
+
+        var hasChanges = false;
+        for (uint i = 0; i < proxy->EntryCount; i++)
+        {
+            var entry = proxy->GetEntry(i);
+            if (entry == null || !notesByContentId.TryGetValue(entry->ContentId, out var notes))
+                continue;
+
+            var friendName = entry->NameString.ToString();
+            if (string.IsNullOrWhiteSpace(friendName))
+                continue;
+
+            var serverName = worldNameResolver(entry->HomeWorld);
+
+            foreach (var note in notes)
+            {
+                if (!note.FriendName.Equals(friendName, StringComparison.Ordinal))
+                {
+                    note.FriendName = friendName;
+                    hasChanges = true;
+                }
+
+                if (!note.ServerName.Equals(serverName, StringComparison.Ordinal))
+                {
+                    note.ServerName = serverName;
+                    hasChanges = true;
+                }
+            }
+        }
+
+        if (hasChanges)
+            config.Save();
     }
 
     private List<FriendDisplay> GetFriendDisplays(InfoProxyFriendList* proxy)

@@ -30,6 +30,9 @@ public sealed class Plugin : IDalamudPlugin
     internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
 
     [PluginService]
+    internal static IClientState ClientState { get; private set; } = null!;
+
+    [PluginService]
     internal static IDataManager DataManager { get; private set; } = null!;
 
     private const string CommandName = "/fnote";
@@ -49,7 +52,7 @@ public sealed class Plugin : IDalamudPlugin
 
         MainWindow = new MainWindow(this);
         NoteWindow = new NoteWindow(this);
-        NoteService = new NoteService(AddonLifecycle, Configuration, NoteWindow);
+        NoteService = new NoteService(AddonLifecycle, ClientState, Configuration, NoteWindow, GetWorldName);
 
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(NoteWindow);
