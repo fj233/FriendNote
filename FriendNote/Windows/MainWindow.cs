@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using FriendNote.Localization;
 
@@ -47,7 +48,8 @@ public class MainWindow : Window, IDisposable
 
         var deleteIndex = -1;
 
-        if (ImGui.BeginTable("##SavedNotesTable", 3, tableFlags, new Vector2(-1, -1)))
+        using var table = ImRaii.Table("##SavedNotesTable", 3, tableFlags, new Vector2(-1, -1));
+        if (table)
         {
             ImGui.TableSetupColumn(Loc.FriendNameColumn);
             ImGui.TableSetupColumn(Loc.NoteColumn);
@@ -67,16 +69,15 @@ public class MainWindow : Window, IDisposable
                 ImGui.TextWrapped(string.IsNullOrWhiteSpace(item.Note) ? Loc.EmptyNote : item.Note);
 
                 ImGui.TableSetColumnIndex(2);
-                ImGui.PushID(i);
-                if (ImGui.Button(Loc.Edit))
-                    plugin.AddNote(item.ContentId, item.FriendName, item.ServerName);
-                ImGui.SameLine();
-                if (ImGui.Button(Loc.Delete))
-                    deleteIndex = i;
-                ImGui.PopID();
+                using (ImRaii.PushId(i))
+                {
+                    if (ImGui.Button(Loc.Edit))
+                        plugin.AddNote(item.ContentId, item.FriendName, item.ServerName);
+                    ImGui.SameLine();
+                    if (ImGui.Button(Loc.Delete))
+                        deleteIndex = i;
+                }
             }
-
-            ImGui.EndTable();
         }
 
         if (deleteIndex >= 0)
